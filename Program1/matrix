@@ -1,0 +1,403 @@
+#!/bin/bash
+
+#function that prints dimensions of matrix input
+dims()
+{
+	#initialize variables for keeping track of rows and columns
+	rows=0
+	cols=0
+	
+	#go through each row in file
+	while read eachLine 
+	do
+	#add to row count every time a new line is read
+		rows=$(($rows + 1))
+		
+		#if columns haven't been calculated yet, count now. Only need to loop once since columns can be counted on first go
+		if [ $cols == 0 ]
+		then
+			#for each number read on the line, add to column count
+			for eachNum in $eachLine
+			do
+				cols=$(($cols + 1))
+			done
+		fi
+	#take file input from passed argument or stdin by piping, found on stack overflow after searching for ways to read both stdin and arguments
+	done <"${1:-/dev/stdin}"
+	#print count to stdout
+	echo "$rows $cols"
+
+}
+
+#function to transpose matrix taken as input (either as argument or stdin). Outputs transposed matrix 
+transpose()
+{	
+	#create temp files to hold necessary data
+	tempOut="tempOutFile$$"
+	tempMatrix="tempMatrixFile$$"i
+	tempRow="tempRowFile$$"
+	tempCol="tempColFile$$"
+	
+	
+	#create counter, needed for creation of tempMatrix file, otherwise paste operation will not work 
+	i=0
+	
+	while read eachLine
+	do
+		#send each line read as a row to tempRow file
+		echo "$eachLine" > "$tempRow"
+				
+		cat $tempRow | tr -s '\t' '\n' > "$tempCol" #replace tabs with newline char to convert row to col
+		
+		if [ "$i" -eq 0 ] #if first runthrough, send stdout to tempMatrix to create file for use by paste operation
+		then
+		
+			cat $tempCol > "$tempMatrix"
+			i=$((i+1)) #increment counter so this section isn't called again
+		
+		else 
+			#paste stdout containing col to tempMatrix file, then send stdout to intermediary temp file and move permanently to tempMstrix file
+			cat $tempCol | paste $tempMatrix - > $tempOut && mv $tempOut $tempMatrix
+			 
+ 		fi
+	#take input as argument or stdin
+	done <"${1:-/dev/stdin}"
+	
+	#print transposed matrix to stdout		
+	cat $tempMatrix
+	
+	#remove temp files containing data
+	rm $tempRow
+	rm $tempCol
+	rm $tempMatrix
+}	
+
+#function to calculate the mean of every column in a matrix. Takes single matrix as input through stdin or as an argument. Outputs the calculated means for each column.
+mean()
+{
+	#create files to hold temp data
+	tempTransMatrix="tempTransMatrixFile$$"
+	tempMean="tempMeanFile$$"
+	tempOut="tempOutFile$$"
+					
+	#call transpose function with argument or stdin, converting rows to columns first will make processing easier
+	transpose ${1:-/dev/stdin} > $tempTransMatrix
+	
+	#read each row of transposed matrix, add all values and divide by total number
+	while read eachLine
+	do
+		numCount=0
+		sum=0
+		boolCheck=0
+		rowMean=0
+		
+		#add each variable in the row, increment counter with each loop
+		for i in $eachLine
+		do
+			sum=$((sum+i))
+			numCount=$((numCount+1))
+			
+		done
+		#check to see if sum is positive or negative
+		boolCheck=$((sum>0))
+		#calculate mean of row using formula provided in hints section of P1 instructions
+		rowMean=$(( (sum+(numCount/2)*( (boolCheck)*2-1)) / numCount ))
+		#append file to store new mean of column
+		echo "$rowMean" >> $tempMean 
+ 	
+	#take transposed matrix as argument to read
+	done<"$tempTransMatrix"	
+	
+	#convert answers as col to row, use intermediary tempOut file to allow for use and modification of same file
+	cat $tempMean | tr '\n' '\t' > $tempOut && mv $tempOut $tempMean
+	
+	#was getting a tab character at end of file, used truncate to remove, then added newline character at EOF
+	truncate -s -1 $tempMean
+	printf "\n" >> $tempMean
+	
+	#print mean of cols to stdout
+	cat $tempMean
+	
+	#rm any temp files
+	rm $tempTransMatrix
+	rm $tempMean
+	
+}
+
+#function to add two matrices. Takes two matrices as input(arguments), adds them, and outputs the result of the addition as a separate matrix.
+add()
+{	
+	#temp file to store added matrix
+	tempAddedMatrix="tempAddedMatrixFile$$"
+	
+	#read both files at once, took idea from a discussion on stack overflow
+	while read m1Line && read m2Line<&3
+	do
+		#reset index at each for loop in order to align positions with both files
+		index=0
+		
+		#for each number read, add to position in array
+		for i in $m1Line
+		do
+			numArray[index]=$i
+			#advance index position
+			index=$((index+1))
+	
+		done
+		
+		#reset index for next read
+		index=0
+		
+		#add each number in matrix 2 to the appropriate indices containing the values of matrix 1
+		for j in $m2Line
+		do
+			numArray[index]=$((numArray[index]+$j))
+			index=$((index+1))
+		done
+		
+		#print array containing row of sdded results to file, replace spaces with tabs first
+		echo ${numArray[@]} | tr ' ' '\t' >> $tempAddedMatrix
+		
+		#reset array for next line read	
+		unset numArray
+	
+	#take input from two files, as seen on discussion on stack overflow
+	done<"$1" 3<"$2"
+	
+	#edit file for proper format, had extra tab character at end
+	truncate -s -1 $tempAddedMatrix
+	
+	#add needed newline character to separate rows
+	printf "\n" >> $tempAddedMatrix
+	
+	#send added matrix to stdout
+	cat $tempAddedMatrix
+	
+	#remove temp files
+	rm $tempAddedMatrix
+	
+}
+
+#function to multiply two matrices. Takes left and right matrices as input, multiplies them, and outputs multiplied matrix
+multiply()
+{
+	#create temp files to store data
+	tempMultMatrix="tempMultMatrixFile$$"
+	tempTransMatrix="tempTransMatrixM2$$"
+	
+	#transpose right matrix to make processing easier	
+	transpose $2 > $tempTransMatrix
+	
+	#loop through left matrix		
+	while read m1Line
+	do	
+		#create indices for arrays. "index" is used for array multiplication purposes, "ansIndex" is used for storing final solution. Reset after each line in left matrix is read
+		index=0
+		ansIndex=0
+				
+		#store each num in left matrix line in array
+		for i in $m1Line
+		do
+			m1Array[index]=$i
+			#advance index
+			index=$((index+1))
+		done	
+		
+		#loop through right matrix
+		while read m2Line
+		do
+			#reset index for use again
+			index=0
+			multLine=0
+			
+			#multiply each variable in left matrix against corresponding variable in right matrix. Store value in multLine
+			for j in $m2Line
+			do
+				multLine=$(((multLine + (m1Array[index] * $j))))
+				#advance index
+				index=$((index+1))
+			done
+			
+			#store multiplication value in separate array			
+			multArray[ansIndex]=$multLine
+			#advance index
+			ansIndex=$((ansIndex+1))
+		
+		#read from transposed right matrix file	
+		done<"$tempTransMatrix"
+		
+		#send line of multiplied values to final matrix				
+		echo ${multArray[@]} | tr ' ' '\t' >> $tempMultMatrix
+	
+	#read from left matrix file
+	done<"$1"
+ 	
+	#formatting final matrix
+	truncate -s -1 $tempMultMatrix
+	printf "\n" >> $tempMultMatrix
+	
+	#send final matrix to stdout
+	cat $tempMultMatrix
+	
+	#remove temp files
+	rm $tempMultMatrix
+	rm $tempTransMatrix
+}
+
+#Program control flow for chosen operations and input. Takes operation choice from user, then checks input type to ensure the proper amount of arguments havebeen sent for the selected operation and that the files are readable. If conditions are met, operation functions are called, if not, errors are sent to stderr.
+
+#if user choses dims operation
+if [ "$1" == "dims" ]
+then
+	#if the proper amount of arguments is passed, or if there is stdin, continue
+	if [ "$#" == 2 -o -p /dev/stdin ]
+	then	
+		#if file in argument is readable, continue
+		if [ -r $2 ]
+		then
+		#call dims, pass argument
+			dims $2
+		
+		#if there is stdin, continue
+		elif [ -p /dev/stdin ]
+		then
+			dims
+		#if the input is not usable, send error	
+		else
+			echo "File not readable" 1>&2
+			exit 1
+		fi
+	#if no proper amount of arguments, send error
+	else
+		echo "Invalid number of arguments" 1>&2
+		exit 1
+	fi
+
+#follow same logic flow as dims
+elif [ "$1" == "transpose" ]
+then
+	if [ "$#" == 2 -o -p /dev/stdin ]
+	then
+		if [ -r $2 ]
+		then
+			transpose $2
+
+		elif [ -p /dev/stdin ]
+		then
+			transpose
+		else
+			echo "File not readable" 1>&2
+			exit 1
+		fi
+	else
+		echo "Invalid number of arguments" 1>&2
+		exit 1
+	fi
+
+#follows same logic flow as dims
+elif [ "$1" == "mean" ]
+then
+	if [ "$#" == 2 -o -p /dev/stdin ]
+	then
+		if [ -r $2 ]
+		then
+			mean $2
+		elif [ -p /dev/stdin ]
+		then
+			mean
+		else
+			echo "File not readable" 1>&2
+			exit 1
+		fi
+	else
+		echo "Invalid number of arguments" 1>&2
+		exit 1
+	fi
+
+#if user chooses add operation
+elif [ "$1" == "add" ]
+then
+	#need two passed arguments (first is operation)
+	if [ "$#" == 3 ]
+	then
+		#if files from both arguments are readable, continue
+		if [ -r $2 -a -r $3 ]	
+		then
+			#create file variables to store dimensions of matrix arguments
+			m1Dim="tempDim1"
+			m2Dim="tempDim2"
+			
+			dims $2 > "$m1Dim"
+			dims $3 > "$m2Dim"
+			
+			#compare matrices. if equal, can perform operation
+			if cmp -s "$m1Dim" "$m2Dim"  
+			then
+				add $2 $3
+				rm $m1Dim
+				rm $m2Dim
+			#if not equal, can't perform operation, send error
+			else
+				echo "Cannot add matrices with different dimensions" 1>&2
+				rm $m1Dim
+				rm $m2Dim
+				exit 1
+			fi
+		#if files not readable, send error
+		else
+			echo "File read error" 1>&2
+			exit 1
+		fi
+	#if not enough arguments, send error
+	else
+		echo "Invalid number of arguments" 1>&2
+		exit 1
+	fi	
+
+#follow same logic flow as add operation	
+elif [ "$1" == "multiply" ]
+then
+	if [ "$#" == 3 ]
+	then
+		if [ -r $2 -a -r $3 ]
+		then
+			m1Dim="tempDim1"
+			m2Dim="tempDim2"
+			
+			#get number of columns for left matrix
+			dims $2 > "$m1Dim"
+			m1Cols=$( cat "$m1Dim" | cut -d ' ' -f 2)
+			
+			#get number of rows for right matrix
+			dims $3 > "$m2Dim"
+			m2Rows=$( cat "$m2Dim" | cut -d ' ' -f 1)
+			
+			#check to see if the number of loumns for left matrix match the number of rows for right matrix, if so, can multiply			
+			if [ $m1Cols == $m2Rows ] 
+			then
+				multiply $2 $3
+				rm $m1Dim
+				rm $m2Dim
+			
+			#if left matrix columns don't match tight matrix rows, send error message to stderr
+			else
+				echo "Cannot multiply matrices with incompatible dimensions" 1>&2
+				rm $m1Dim
+				rm $m2Dim
+				exit 1
+			fi
+		else
+			echo "File read error" 1>&2
+			exit 1
+		fi
+	else
+		echo "Invalid number of arguments" 1>&2
+		exit 1
+	fi
+
+else
+	echo "Invalid operation" 1>&2
+	exit 1
+fi
+
+exit 0
