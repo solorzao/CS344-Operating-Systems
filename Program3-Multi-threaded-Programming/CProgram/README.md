@@ -1,4 +1,7 @@
 C Program: Multi-threaded Producer Consumer Pipeline
+
+Program Specifications:
+
 The program will read in lines of characters from the standard input and write them as 80 character long lines to standard output with the following changes:
 
 Every line separator in the input will be replaced by a space
